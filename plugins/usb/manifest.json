@@ -1,0 +1,77 @@
+{
+  "name": "usb",
+  "version": "0.1.0",
+  "description": "Detect USB peripherals, install driver recipes, and flash images to USB drives.",
+  "runtime": "python",
+  "entry": "handler.py",
+  "tools": [
+    {
+      "name": "usb.list",
+      "description": "List connected USB devices with vendor/product IDs, names, and serials.",
+      "capabilities": ["read"],
+      "danger": "low",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "usb.drives",
+      "description": "List block drives, showing removable/USB status, size, model, serial, and mounts.",
+      "capabilities": ["read"],
+      "danger": "low",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "all": {"type": "boolean", "description": "Include internal drives too."}
+        }
+      }
+    },
+    {
+      "name": "usb.recipes",
+      "description": "List driver install recipes and whether their device is currently connected.",
+      "capabilities": ["read"],
+      "danger": "low",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "all": {"type": "boolean", "description": "Include recipes whose device is not connected."}
+        }
+      }
+    },
+    {
+      "name": "usb.install_driver",
+      "description": "Plan or run a driver install recipe for a connected USB device. Dry-run by default.",
+      "capabilities": ["device", "exec"],
+      "danger": "high",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "recipe": {"type": "string", "description": "Recipe id, e.g. bizhub-c3351."},
+          "dry_run": {"type": "boolean", "description": "Only return the plan. Default true."},
+          "force": {"type": "boolean", "description": "Plan even if the device is not connected."}
+        },
+        "required": ["recipe"]
+      }
+    },
+    {
+      "name": "usb.flash",
+      "description": "Write an image file to a whole USB drive. Dry-run by default; real writes need confirm=<device>.",
+      "capabilities": ["device", "exec"],
+      "danger": "high",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "image": {"type": "string", "description": "Path to the .iso/.img file."},
+          "device": {"type": "string", "description": "Whole disk, e.g. /dev/sdb. Never a partition."},
+          "dry_run": {"type": "boolean", "description": "Only return the plan. Default true."},
+          "confirm": {"type": "string", "description": "Must equal device for a real write."},
+          "sha256": {"type": "string", "description": "Optional expected image checksum."},
+          "unmount": {"type": "boolean", "description": "Unmount mounted partitions first. Default true."},
+          "allow_internal": {"type": "boolean", "description": "Allow non-removable disks. Dangerous."}
+        },
+        "required": ["image", "device"]
+      }
+    }
+  ]
+}

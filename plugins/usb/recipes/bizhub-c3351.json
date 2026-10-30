@@ -1,0 +1,60 @@
+{
+  "id": "bizhub-c3351",
+  "name": "Konica Minolta bizhub C3351 (USB)",
+  "vendor": "132b",
+  "product": "2342",
+  "description": "Installs CUPS and the official KMbeu v1.27 driver, then creates a USB print queue.",
+  "requires_terminal": true,
+  "source_dir": "~/bizhub-c3351-installer",
+  "steps": [
+    {
+      "kind": "pacman",
+      "packages": ["cups", "cups-filters", "ghostscript", "perl", "base-devel", "usbutils"]
+    },
+    {
+      "kind": "command",
+      "argv": ["systemctl", "enable", "--now", "cups"],
+      "sudo": true
+    },
+    {
+      "kind": "command",
+      "argv": ["usermod", "-aG", "lp", "{user}"],
+      "sudo": true
+    },
+    {
+      "kind": "verify",
+      "argv": ["lsusb", "-d", "132b:2342"]
+    },
+    {
+      "kind": "copy",
+      "from": "{source_dir}/PKGBUILD",
+      "to": "{tmp}/PKGBUILD"
+    },
+    {
+      "kind": "copy",
+      "from": "{source_dir}/KMbeuUXv1_27_multi_language.tar.gz",
+      "to": "{tmp}/KMbeuUXv1_27_multi_language.tar.gz"
+    },
+    {
+      "kind": "command",
+      "argv": ["makepkg", "-fsi", "--noconfirm"],
+      "cwd": "{tmp}"
+    },
+    {
+      "kind": "command",
+      "argv": ["systemctl", "restart", "cups"],
+      "sudo": true
+    },
+    {
+      "kind": "cups_usb_queue",
+      "queue": "bizhub-C3351",
+      "ppd": "KonicaMinolta/KMbeuC3851ux.ppd.gz",
+      "vendor": "KONICA"
+    },
+    {
+      "kind": "print_test",
+      "queue": "bizhub-C3351",
+      "text": "Konica Minolta bizhub C3351 test page\nInstalled via USB (KMbeu driver v1.27)\n"
+    }
+  ]
+}

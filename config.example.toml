@@ -1,0 +1,52 @@
+# Copy to ~/.config/omni/config.toml, or run: omni init
+
+[server]
+host = "127.0.0.1"
+port = 8737
+approval_timeout = 300
+
+[agent]
+# auto | ollama | gemini | groq | openrouter | openai
+provider = "auto"
+# Empty means: use the provider's model from below.
+model = ""
+max_steps = 10
+system_prompt = ""
+
+[providers.ollama]
+base_url = "http://127.0.0.1:11434"
+model = "qwen2.5:3b"
+
+[providers.gemini]
+base_url = "https://generativelanguage.googleapis.com/v1beta"
+model = "gemini-2.0-flash"
+api_key_env = "GEMINI_API_KEY"
+
+[providers.groq]
+base_url = "https://api.groq.com/openai/v1"
+model = "llama-3.3-70b-versatile"
+api_key_env = "GROQ_API_KEY"
+
+[providers.openrouter]
+base_url = "https://openrouter.ai/api/v1"
+model = "meta-llama/llama-3.3-70b-instruct:free"
+api_key_env = "OPENROUTER_API_KEY"
+
+[providers.openai]
+base_url = "https://api.openai.com/v1"
+model = "gpt-4o-mini"
+api_key_env = "OPENAI_API_KEY"
+
+[policy]
+# allow | ask | deny
+read = "allow"
+write = "ask"
+exec = "ask"
+network = "ask"
+device = "ask"
+# Writes inside these roots may be allowed without a prompt.
+write_roots = ["~", "/tmp"]
+approval_timeout = 300
+
+[plugins]
+dirs = ["~/.config/omni/plugins", "@project/plugins"]
