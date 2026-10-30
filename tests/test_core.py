@@ -17,7 +17,8 @@ from omni.audit import AuditLog
 from omni.broker import Broker, Denied, ToolSpec
 from omni.config import DEFAULTS, render_default_config
 from omni.plugins import load_plugins
-from omni.providers.base import ChatReply, ToolCall
+from omni.providers.base import ChatReply, Provider, ProviderError, ToolCall
+from omni.providers.fallback import FallbackProvider
 from omni.registry import Context, Registry, validate_args
 
 
@@ -251,6 +252,33 @@ class AgentTests(unittest.TestCase):
         provider = SlowProvider([ChatReply(content="", tool_calls=[call]), ChatReply(content="late")])
         agent = _agent(provider, {"agent": {"max_steps": 6, "timeout": 0.01}})
         self.assertIn("longer than", agent.run("read it"))
+
+
+class _BoomProvider(Provider):
+    name = "boom"
+
+    def chat(self, messages, tools):
+        raise ProviderError("no route to host")
+
+
+class _EchoProvider(Provider):
+    name = "echo"
+
+    def chat(self, messages, tools):
+        return ChatReply(content="from echo")
+
+
+class FallbackProviderTests(unittest.TestCase):
+    def test_uses_the_next_provider(self):
+        provider = FallbackProvider([_BoomProvider(), _EchoProvider()])
+        self.assertEqual(provider.chain, ["boom", "echo"])
+        self.assertEqual(provider.chat([], []).content, "from echo")
+
+    def test_reports_every_failure(self):
+        provider = FallbackProvider([_BoomProvider(), _BoomProvider()])
+        with self.assertRaises(ProviderError) as ctx:
+            provider.chat([], [])
+        self.assertIn("boom", str(ctx.exception))
 
 
 if __name__ == "__main__":

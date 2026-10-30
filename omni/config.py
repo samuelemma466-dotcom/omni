@@ -31,6 +31,9 @@ DEFAULTS: dict[str, Any] = {
         "model": "",
         "max_steps": 6,
         "timeout": 240,
+        # Tried in order when the primary provider fails (offline, OOM, slow).
+        # Empty keys and unreachable services are skipped automatically.
+        "fallback": ["gemini", "groq", "openrouter", "pollinations"],
         "system_prompt": DEFAULT_SYSTEM_PROMPT,
     },
     "providers": {
@@ -62,6 +65,13 @@ DEFAULTS: dict[str, Any] = {
             "base_url": "https://api.openai.com/v1",
             "model": "gpt-4o-mini",
             "api_key_env": "OPENAI_API_KEY",
+        },
+        # Keyless free endpoint, last-resort fallback. Prompts leave the machine.
+        "pollinations": {
+            "base_url": "https://text.pollinations.ai/openai",
+            "model": "openai-fast",
+            "api_key_env": "POLLINATIONS_API_KEY",
+            "timeout": 120,
         },
     },
     "policy": {

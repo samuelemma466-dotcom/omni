@@ -95,6 +95,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"  ollama:     unreachable ({ollama.get('error', '')[:120]})")
     for name in ("gemini", "groq", "openrouter", "openai"):
         print(f"  {name + ':':<12}key {'set' if status.get(name, {}).get('key_set') else 'not set'}")
+    print(f"  pollinations: keyless free fallback (always available)")
+    chain = status.get("chain") or []
+    if chain:
+        print(f"  fallback:   {' -> '.join(chain)}")
     if status.get("error"):
         print(f"  hint: {status['error']}")
     print()

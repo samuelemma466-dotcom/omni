@@ -44,6 +44,8 @@ Item {
   property bool busy: false
   property bool stopping: false
   property string statusText: ""
+  property double turnStartedAt: 0
+  property int elapsedSeconds: 0
   property var history: []
   property int restarts: 0
   property double lastStartAt: 0
@@ -113,6 +115,7 @@ Item {
       serverOk: root.serverOk,
       starting: root.starting,
       busy: root.busy,
+      elapsedSeconds: root.elapsedSeconds,
       tokenLength: root.token.length,
       transcript: transcript.count,
       approvals: approvals.count,
@@ -224,6 +227,8 @@ Item {
     root.busy = true
     root.stopping = false
     root.statusText = "thinking"
+    root.turnStartedAt = Date.now()
+    root.elapsedSeconds = 0
 
     var body = JSON.stringify({ message: text, history: root.history.slice(0, -1) })
     chatProc.command = [
@@ -429,6 +434,14 @@ Item {
       root.checkHealth()
       root.startDaemon()
     }
+  }
+
+  Timer {
+    id: elapsedTimer
+    interval: 1000
+    repeat: true
+    running: root.busy
+    onTriggered: root.elapsedSeconds = Math.max(0, Math.round((Date.now() - root.turnStartedAt) / 1000))
   }
 
   Timer {
@@ -947,7 +960,8 @@ Item {
             }
 
             Text {
-              text: root.statusText.length > 0 ? root.statusText : "thinking"
+              text: (root.statusText.length > 0 ? root.statusText : "thinking")
+                    + (root.busy && root.elapsedSeconds > 0 ? "  ·  " + root.elapsedSeconds + "s" : "")
               color: root.muted
               font.family: root.monoFamily
               font.pixelSize: Style.font.bodySmall

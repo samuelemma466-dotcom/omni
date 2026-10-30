@@ -34,29 +34,66 @@ If a local model is installed, `doctor` resolves to Ollama automatically.
 To use a specific local model:
 
 ```bash
-ollama pull qwen2.5:3b
-# then set agent.model = "qwen2.5:3b" in ~/.config/omni/config.toml
+ollama pull qwen2.5:1.5b    # ~1 GB, the default for slow CPUs
+# then set providers.ollama.model = "qwen2.5:1.5b" in ~/.config/omni/config.toml
 ```
 
 If Ollama is not running:
 
 ```bash
 systemctl --user enable --now ollama   # user unit, models in ~/.ollama/models
-ollama pull qwen2.5:3b                 # ~1.9 GB; qwen2.5:1.5b is faster on CPU
+ollama pull qwen2.5:1.5b               # ~1 GB; qwen2.5:3b is smarter but ~2x slower
 ```
 
 The repo ships no Ollama unit; the one used on this machine is
 `~/.config/systemd/user/ollama.service` and binds `127.0.0.1:11434`.
 
-Local inference is CPU-only on this machine (4 cores), so a two-step tool call can take
-30–90 seconds. For snappier answers, use a free cloud key:
+### Fallbacks: local first, free cloud second
+
+Omni builds a provider chain and moves to the next entry when one fails
+(offline, out of memory, timeout). The default chain is:
+
+```
+ollama -> gemini -> groq -> openrouter -> pollinations
+```
+
+Only providers that can actually work are kept: `gemini`, `groq` and
+`openrouter` are skipped unless their key is set, and `pollinations` needs no
+key at all. So on a machine with no keys the chain is just
+`ollama -> pollinations`, and Omni still answers when Ollama is down — at the
+cost of sending that prompt to a third party.
 
 ```bash
 export GEMINI_API_KEY=...        # free tier: https://aistudio.google.com/apikey
 # or GROQ_API_KEY / OPENROUTER_API_KEY
 ```
 
-Then set `agent.provider = "gemini"` (or `groq` / `openrouter`) in the config.
+Change the order or disable fallbacks in `~/.config/omni/config.toml`:
+
+```toml
+[agent]
+fallback = ["gemini", "pollinations"]   # or `fallback = false` for local only
+```
+
+### Tuning a slow CPU
+
+On a memory-constrained machine, cap the model's footprint in
+`[providers.ollama]`:
+
+```toml
+num_ctx = 2048      # KV cache size; 4096 doubles it
+num_predict = 512   # max generated tokens per model call
+num_thread = 4      # 0 = let Ollama decide
+keep_alive = "5m"   # unload the model when idle, giving RAM back
+timeout = 150       # give up and use the next provider
+```
+
+A model is only loaded with new options after it is reloaded, so restart
+Ollama after changing `num_thread`:
+
+```bash
+systemctl --user restart ollama
+```
 
 ## Chat
 

@@ -5,6 +5,7 @@ from typing import Any
 
 from omni.config import provider_model
 from omni.providers.base import Provider, ProviderError
+from omni.providers.fallback import FallbackProvider
 from omni.providers.gemini import GeminiProvider
 from omni.providers.ollama import OllamaProvider
 from omni.providers.openai_compat import OpenAICompatProvider
@@ -20,6 +21,10 @@ __all__ = [
 ]
 
 FREE_PROVIDERS = ("gemini", "groq", "openrouter", "openai")
+# Free tiers that need no API key at all. Only used as fallbacks: prompts go to
+# a third party, so local models stay first whenever they are available.
+KEYLESS_PROVIDERS = ("pollinations",)
+FALLBACK_ORDER = ("gemini", "groq", "openrouter", "pollinations")
 # Roughly ordered by tool-calling reliability in Ollama.
 PREFERRED_OLLAMA = (
     "qwen2.5",
@@ -69,6 +74,10 @@ def detect_provider(config: dict[str, Any]) -> str:
         if _key(config, candidate):
             return candidate
 
+    # Nothing local and no keys: the keyless free endpoint still works.
+    if KEYLESS_PROVIDERS:
+        return KEYLESS_PROVIDERS[0]
+
     if ollama_error is not None:
         raise ProviderError(
             "no AI provider available: Ollama is not reachable and no free API key is set.\n"
@@ -87,6 +96,36 @@ def build_provider(config: dict[str, Any], override: str | None = None) -> Provi
     if name == "auto":
         name = detect_provider(config)
 
+    primary = _build_one(config, name)
+    # An explicit --provider choice means "use exactly this one".
+    if override:
+        return primary
+
+    agent = config.get("agent", {})
+    wanted = agent.get("fallback")
+    if wanted is False:
+        return primary
+    if isinstance(wanted, list):
+        names = [str(item).lower() for item in wanted]
+    else:
+        names = list(FALLBACK_ORDER)
+
+    chain: list[Provider] = [primary]
+    seen = {primary.name}
+    for candidate in names:
+        if candidate in seen:
+            continue
+        try:
+            provider = _build_one(config, candidate)
+        except ProviderError:
+            continue
+        seen.add(provider.name)
+        chain.append(provider)
+    return FallbackProvider(chain) if len(chain) > 1 else primary
+
+
+def _build_one(config: dict[str, Any], name: str) -> Provider:
+    name = name.lower()
     settings = config.get("providers", {}).get(name, {})
     model = provider_model(config, name)
 
@@ -108,6 +147,7 @@ def build_provider(config: dict[str, Any], override: str | None = None) -> Provi
         return OllamaProvider(
             base_url,
             model,
+            timeout=float(settings.get("timeout", 180)),
             num_ctx=int(settings.get("num_ctx", 4096)),
             keep_alive=str(settings.get("keep_alive", "30m")),
             num_predict=int(settings.get("num_predict", 512)),
@@ -124,6 +164,16 @@ def build_provider(config: dict[str, Any], override: str | None = None) -> Provi
             settings.get("base_url", "https://generativelanguage.googleapis.com/v1beta"),
             model,
             key,
+        )
+
+    if name == "pollinations":
+        # Keyless free endpoint (OpenAI-compatible). Optional key raises limits.
+        return OpenAICompatProvider(
+            settings.get("base_url", "https://text.pollinations.ai/openai"),
+            model or "openai-fast",
+            _key(config, "pollinations") or None,
+            timeout=float(settings.get("timeout", 120)),
+            name="pollinations",
         )
 
     if name in {"groq", "openrouter", "openai"}:
@@ -156,11 +206,18 @@ def provider_status(config: dict[str, Any]) -> dict[str, Any]:
         status["ollama"] = {"reachable": False, "error": str(exc)}
     for name in FREE_PROVIDERS:
         status[name] = {"key_set": bool(_key(config, name))}
+    for name in KEYLESS_PROVIDERS:
+        status[name] = {"key_set": True, "keyless": True}
     try:
         status["resolved"] = detect_provider(config)
     except ProviderError as exc:
         status["resolved"] = None
         status["error"] = str(exc)
+    try:
+        provider = build_provider(config)
+        status["chain"] = provider.chain if hasattr(provider, "chain") else [provider.name]
+    except ProviderError:
+        status["chain"] = []
     if status.get("resolved") == "ollama":
         models = status.get("ollama", {}).get("models") or []
         if models:
