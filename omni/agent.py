@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Callable
 
 from omni.broker import Broker
@@ -34,7 +35,8 @@ class Agent:
         self.config = config
         self.emit = emit or (lambda event: None)
         self.ctx = ctx or Context(config=config, broker=broker)
-        self.max_steps = int(config.get("agent", {}).get("max_steps", 10))
+        self.max_steps = int(config.get("agent", {}).get("max_steps", 6))
+        self.timeout = float(config.get("agent", {}).get("timeout", 240))
         self.system_prompt = (
             config.get("agent", {}).get("system_prompt") or DEFAULT_SYSTEM_PROMPT
         )
@@ -50,12 +52,34 @@ class Agent:
         messages.append({"role": "user", "content": user_text})
 
         tools = self.registry.specs()
+        seen: dict[str, Any] = {}
+        repeats = 0
+        empty_retries = 0
+        deadline = time.monotonic() + self.timeout if self.timeout > 0 else None
+
         for step in range(self.max_steps):
+            if deadline is not None and time.monotonic() > deadline:
+                message = f"Stopped: the turn took longer than {int(self.timeout)}s."
+                self.emit({"type": "error", "message": message})
+                return message
+
             self.emit({"type": "status", "text": "thinking", "step": step + 1})
             reply = self.provider.chat(messages, tools)
 
             if not reply.tool_calls:
-                content = reply.content or "(empty response)"
+                content = (reply.content or "").strip()
+                if not content and empty_retries < 1:
+                    # Small models sometimes answer with nothing when tools are
+                    # advertised. Ask once more, plainly, before giving up.
+                    empty_retries += 1
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": "Your previous reply was empty. Answer the question above in plain text.",
+                        }
+                    )
+                    continue
+                content = content or "(the model returned an empty response)"
                 messages.append({"role": "assistant", "content": content})
                 self.emit({"type": "assistant", "content": content})
                 self.emit({"type": "done", "steps": step + 1})
@@ -78,9 +102,21 @@ class Agent:
                         "id": call.id,
                     }
                 )
-                result = self.registry.invoke(
-                    call.name, call.arguments, self.ctx, notify=self._notify
+                key = call.name + "|" + json.dumps(
+                    call.arguments, sort_keys=True, ensure_ascii=False, default=str
                 )
+                repeated = key in seen
+                if repeated:
+                    # A small model can get stuck re-issuing the same call. Reuse
+                    # the earlier result instead of running the tool again and
+                    # nudge the model towards a final answer.
+                    repeats += 1
+                    result = seen[key]
+                else:
+                    result = self.registry.invoke(
+                        call.name, call.arguments, self.ctx, notify=self._notify
+                    )
+                    seen[key] = result
                 preview = json.dumps(result.to_dict(), ensure_ascii=False, default=str)[:4000]
                 self.emit(
                     {
@@ -92,14 +128,25 @@ class Agent:
                         "preview": preview,
                     }
                 )
+                content = _tool_message_content(result)
+                if repeated:
+                    content += (
+                        "\n\n(You already called this tool with these arguments. "
+                        "Use the result above and answer the user now; do not call it again.)"
+                    )
                 messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": call.id,
                         "name": call.name,
-                        "content": _tool_message_content(result),
+                        "content": content,
                     }
                 )
+
+            if repeats >= 2:
+                message = "Stopped: the model kept repeating the same tool call."
+                self.emit({"type": "error", "message": message})
+                return message
 
         message = f"Stopped after {self.max_steps} tool steps without a final answer."
         self.emit({"type": "error", "message": message})

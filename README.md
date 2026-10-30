@@ -2,10 +2,10 @@
 
 A permissioned local AI agent for **Omarchy / Arch / Hyprland**.
 
-Omni is the core of a planned floating assistant: a local daemon that can read and write files,
+Omni is the core of a floating assistant: a local daemon that can read and write files,
 run commands, inspect and flash USB devices, install drivers, and call plugins — but every
 dangerous action goes through an explicit approval gate and an audit log. The chat overlay is
-the next stage; the core and the USB plugin are usable today.
+a Quickshell plugin that talks to the daemon over localhost SSE.
 
 ```
 omni CLI ──┐
@@ -16,6 +16,9 @@ omni serve ┘        │
                               │
                               └── LLM: Ollama (local) or free cloud APIs
 ```
+
+The overlay is a separate plugin under `omarchy-plugin/`. It starts `omni serve` on demand
+and renders tool calls and approval requests inline; it never bypasses the broker.
 
 ## Quick start
 
@@ -38,9 +41,12 @@ ollama pull qwen2.5:3b
 If Ollama is not running:
 
 ```bash
-systemctl --user enable --now ollama   # or: ollama serve
-ollama pull qwen2.5:1.5b               # ~1 GB, fastest option on CPU
+systemctl --user enable --now ollama   # user unit, models in ~/.ollama/models
+ollama pull qwen2.5:3b                 # ~1.9 GB; qwen2.5:1.5b is faster on CPU
 ```
+
+The repo ships no Ollama unit; the one used on this machine is
+`~/.config/systemd/user/ollama.service` and binds `127.0.0.1:11434`.
 
 Local inference is CPU-only on this machine (4 cores), so a two-step tool call can take
 30–90 seconds. For snappier answers, use a free cloud key:
@@ -202,6 +208,56 @@ SSE event types: `status`, `tool_call`, `approval_required`, `tool_result`, `ass
 `error`, `done`. The chat request stays open while an approval is pending; the UI posts the
 decision on a second connection.
 
+## Floating overlay
+
+The overlay is a normal Omarchy/Quickshell plugin in `omarchy-plugin/`. It is not a second
+Quickshell process: it mounts inside `omarchy-shell` as a `keepLoaded` overlay and uses
+layer-shell keyboard focus only while open.
+
+```bash
+cd ~/Projects/omni
+./omarchy-plugin/install.sh            # link CLI + plugin, enable, add keybind
+./omarchy-plugin/install.sh --restart  # same, then restart the shell
+```
+
+What the installer does:
+
+- links `bin/omni` to `~/.local/bin/omni` (symlink-safe launcher);
+- runs `omni init` so the config and token exist;
+- links this repo's `omarchy-plugin/` to `~/.config/omarchy/plugins/jovibe.omni`;
+- enables the plugin and adds `SUPER + ALT + O` to `~/.config/hypr/bindings.lua`.
+
+`SUPER + SHIFT + A` is the stock ChatGPT webapp binding, so Omni deliberately uses
+`SUPER + ALT + O` instead of shadowing it. Change the line in `bindings.lua` if you prefer
+another key.
+
+Open it with `SUPER + ALT + O` or:
+
+```bash
+omarchy-shell shell toggle jovibe.omni
+```
+
+The overlay starts `omni serve` on first use (and restarts it with backoff if it dies). The
+daemon log is `~/.local/state/omni/daemon.log`; the token is read from
+`~/.local/state/omni/token`. If you change `server.port` in the config, export `OMNI_PORT`
+in the shell's environment as well, because the launcher health-checks that port before
+starting a second daemon.
+
+The transcript renders `status`, `tool_call`, and `tool_result` events as they arrive.
+When the broker asks for approval, a card appears with the tool, risk level, reason,
+capabilities, and a diff/argument preview:
+
+- **Allow once** approves that single call;
+- **Allow session** grants that tool for the approval window (hidden for high-risk tools);
+- **Deny** refuses it; the agent sees the denial and can suggest an alternative.
+
+Closing the overlay does not cancel a running turn; reopen it to see the result. **Stop**
+cancels the current turn and denies any pending approvals.
+
+If the shell is already running, plugin *manifests* reload automatically when the symlink
+changes, but Quickshell caches QML. After editing `Omni.qml`, run `omarchy-restart-shell`
+(or the installer with `--restart`) to load the new code.
+
 ## Plugins
 
 A plugin is a directory with `manifest.json` and a Python `handler.py`:
@@ -235,7 +291,7 @@ python3 -m unittest discover -s tests -v
 - [x] Ollama + free cloud providers
 - [x] USB detection, driver recipes, guarded flashing
 - [x] Local HTTP/SSE daemon
-- [ ] Quickshell overlay on a Hyprland keybind
+- [x] Quickshell overlay on a Hyprland keybind
 - [ ] Token-by-token streaming
 - [ ] Service bridges (Jarvis, Omachy, KDE Connect)
 - [ ] More recipes (scanners, printers, serial adapters)

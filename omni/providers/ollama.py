@@ -34,10 +34,23 @@ def _messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 class OllamaProvider(Provider):
     name = "ollama"
 
-    def __init__(self, base_url: str, model: str, timeout: float = 600) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        timeout: float = 600,
+        num_ctx: int = 4096,
+        keep_alive: str = "30m",
+        num_predict: int = 512,
+        num_thread: int = 0,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.num_ctx = num_ctx
+        self.keep_alive = keep_alive
+        self.num_predict = num_predict
+        self.num_thread = num_thread
 
     def models(self) -> list[str]:
         data = http_json(f"{self.base_url}/api/tags", timeout=5)
@@ -50,10 +63,17 @@ class OllamaProvider(Provider):
             "model": self.model,
             "messages": _messages(messages),
             "stream": False,
-            "options": {"temperature": 0.2, "num_predict": 1024},
+            "keep_alive": self.keep_alive,
+            "options": {
+                "temperature": 0.2,
+                "num_predict": self.num_predict,
+                "num_ctx": self.num_ctx,
+            },
         }
         if tools:
             payload["tools"] = [{"type": "function", "function": tool} for tool in tools]
+        if self.num_thread > 0:
+            payload["options"]["num_thread"] = self.num_thread
         data = http_json(f"{self.base_url}/api/chat", payload, timeout=self.timeout)
         message = data.get("message") or {}
         calls = []

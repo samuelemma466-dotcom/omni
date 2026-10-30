@@ -14,16 +14,10 @@ CONFIG_PATH = CONFIG_DIR / "config.toml"
 TOKEN_PATH = STATE_DIR / "token"
 AUDIT_PATH = STATE_DIR / "audit.jsonl"
 
-DEFAULT_SYSTEM_PROMPT = """You are Omni, a local assistant running on the user's Omarchy (Arch/Hyprland) machine.
-
-You can call tools to read files, write files, run commands, inspect USB devices, install drivers,
-and flash USB drives. Rules:
-- Use tools when they give a real answer. Never invent tool output.
-- Prefer the smallest, safest action. Read before writing.
-- Destructive actions (writes outside the home directory, commands, flashing drives) need the
-  user's approval; the permission broker enforces this independently of you.
-- When a tool is denied or fails, report the exact error and suggest the next step.
-- Keep answers short and concrete. Show the command or path you used when relevant.
+DEFAULT_SYSTEM_PROMPT = """You are Omni, a local assistant on the user's Omarchy (Arch/Hyprland) machine.
+Use tools when they give a real answer; never invent tool output. Read before writing.
+Writes, commands, network and device actions need the user's approval - the broker enforces it.
+If a tool is denied or fails, report the exact error. Keep answers short and concrete.
 """
 
 DEFAULTS: dict[str, Any] = {
@@ -35,13 +29,19 @@ DEFAULTS: dict[str, Any] = {
     "agent": {
         "provider": "auto",
         "model": "",
-        "max_steps": 10,
+        "max_steps": 6,
+        "timeout": 240,
         "system_prompt": DEFAULT_SYSTEM_PROMPT,
     },
     "providers": {
         "ollama": {
             "base_url": "http://127.0.0.1:11434",
             "model": "qwen2.5:3b",
+            # Small machines: lower num_ctx and keep_alive to cap RAM use.
+            "num_ctx": 4096,
+            "keep_alive": "30m",
+            "num_predict": 512,
+            "num_thread": 0,
         },
         "gemini": {
             "base_url": "https://generativelanguage.googleapis.com/v1beta",

@@ -16,6 +16,10 @@ system_prompt = ""
 [providers.ollama]
 base_url = "http://127.0.0.1:11434"
 model = "qwen2.5:3b"
+num_ctx = 4096      # lower to 2048 on a memory-constrained machine
+keep_alive = "30m"  # how long the model stays resident after a turn
+num_predict = 512   # cap on generated tokens per model call
+num_thread = 0      # 0 = let Ollama choose; set to `nproc` to use every CPU thread
 
 [providers.gemini]
 base_url = "https://generativelanguage.googleapis.com/v1beta"

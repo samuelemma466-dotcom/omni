@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "jovibe.omni",
+  "name": "Omni",
+  "version": "0.1.0",
+  "author": "jovibe",
+  "description": "A permissioned local AI assistant: chat over any window, read/write/exec tools, approvals, and plugins.",
+  "license": "MIT",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Omni.qml"
+  }
+}

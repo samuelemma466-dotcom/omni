@@ -105,7 +105,14 @@ def build_provider(config: dict[str, Any], override: str | None = None) -> Provi
                     f"Ollama model {model!r} is not installed. Available: {', '.join(installed)}"
                 )
             model = pick_ollama_model(installed, model)
-        return OllamaProvider(base_url, model)
+        return OllamaProvider(
+            base_url,
+            model,
+            num_ctx=int(settings.get("num_ctx", 4096)),
+            keep_alive=str(settings.get("keep_alive", "30m")),
+            num_predict=int(settings.get("num_predict", 512)),
+            num_thread=int(settings.get("num_thread", 0)),
+        )
 
     if name == "gemini":
         key = _key(config, "gemini")

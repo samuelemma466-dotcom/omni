@@ -12,10 +12,12 @@ os.environ["XDG_STATE_HOME"] = str(_SANDBOX / "state")
 
 import tomllib
 
+from omni.agent import Agent
 from omni.audit import AuditLog
 from omni.broker import Broker, Denied, ToolSpec
 from omni.config import DEFAULTS, render_default_config
 from omni.plugins import load_plugins
+from omni.providers.base import ChatReply, ToolCall
 from omni.registry import Context, Registry, validate_args
 
 
@@ -180,6 +182,75 @@ class PluginTests(unittest.TestCase):
         result = registry.invoke("demo.echo", {"text": "hi"}, Context(config={}))
         self.assertTrue(result.ok)
         self.assertEqual(result.data, {"tool": "demo.echo", "text": "hi"})
+
+
+class _FakeProvider:
+    """Replays scripted replies so agent behaviour can be tested without a model."""
+
+    name = "fake"
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = 0
+
+    def chat(self, messages, tools):
+        self.calls += 1
+        return self.replies.pop(0) if self.replies else ChatReply(content="done")
+
+
+def _agent(provider, config=None, registry=None):
+    registry = registry or Registry()
+    if registry.get("demo.read") is None:
+        registry.register(
+            ToolSpec(
+                name="demo.read",
+                description="read a file",
+                input_schema={"type": "object", "properties": {"path": {"type": "string"}}},
+                capabilities=frozenset({"read"}),
+                handler=lambda args, ctx: {"content": "hello"},
+            )
+        )
+    config = config or {"agent": {"max_steps": 6}}
+    broker = Broker({"read": "allow"}, AuditLog())
+    ctx = Context(config=config, broker=broker)
+    return Agent(provider, registry, broker, config, ctx=ctx)
+
+
+class AgentTests(unittest.TestCase):
+    def test_answers_without_tools(self):
+        provider = _FakeProvider([ChatReply(content="hi there")])
+        self.assertEqual(_agent(provider).run("hello"), "hi there")
+        self.assertEqual(provider.calls, 1)
+
+    def test_retries_once_on_empty_reply(self):
+        provider = _FakeProvider([ChatReply(content=""), ChatReply(content="second try")])
+        self.assertEqual(_agent(provider).run("hello"), "second try")
+        self.assertEqual(provider.calls, 2)
+
+    def test_duplicate_tool_calls_stop_the_loop(self):
+        call = ToolCall(id="c1", name="demo.read", arguments={"path": "/tmp/x"})
+        provider = _FakeProvider([ChatReply(content="", tool_calls=[call]) for _ in range(5)])
+        events = []
+        agent = _agent(provider)
+        agent.emit = events.append
+        answer = agent.run("read it")
+        self.assertIn("kept repeating", answer)
+        # First call executes, two repeats are served from cache, then we stop.
+        self.assertEqual(provider.calls, 3)
+        self.assertTrue(any(e.get("type") == "tool_result" for e in events))
+
+    def test_deadline_stops_a_slow_turn(self):
+        class SlowProvider(_FakeProvider):
+            def chat(self, messages, tools):
+                import time
+
+                time.sleep(0.05)
+                return super().chat(messages, tools)
+
+        call = ToolCall(id="c1", name="demo.read", arguments={"path": "/tmp/x"})
+        provider = SlowProvider([ChatReply(content="", tool_calls=[call]), ChatReply(content="late")])
+        agent = _agent(provider, {"agent": {"max_steps": 6, "timeout": 0.01}})
+        self.assertIn("longer than", agent.run("read it"))
 
 
 if __name__ == "__main__":
