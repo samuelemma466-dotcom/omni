@@ -268,6 +268,32 @@ class _EchoProvider(Provider):
         return ChatReply(content="from echo")
 
 
+class OllamaProviderTests(unittest.TestCase):
+    def test_unnamed_tool_call_fails_so_the_chain_can_fall_back(self):
+        from unittest import mock
+
+        from omni.providers import ollama as mod
+
+        reply = {"message": {"content": "", "tool_calls": [{"function": {"name": "", "arguments": {}}}]}}
+        with mock.patch.object(mod, "http_json", return_value=reply):
+            provider = mod.OllamaProvider("http://127.0.0.1:1", "tiny")
+            with self.assertRaises(ProviderError):
+                provider.chat([{"role": "user", "content": "hi"}], [])
+
+    def test_named_tool_call_is_returned(self):
+        from unittest import mock
+
+        from omni.providers import ollama as mod
+
+        reply = {"message": {"content": "", "tool_calls": [
+            {"function": {"name": "sys.info", "arguments": {}}}
+        ]}}
+        with mock.patch.object(mod, "http_json", return_value=reply):
+            provider = mod.OllamaProvider("http://127.0.0.1:1", "tiny")
+            result = provider.chat([{"role": "user", "content": "hi"}], [])
+        self.assertEqual(result.tool_calls[0].name, "sys.info")
+
+
 class FallbackProviderTests(unittest.TestCase):
     def test_uses_the_next_provider(self):
         provider = FallbackProvider([_BoomProvider(), _EchoProvider()])

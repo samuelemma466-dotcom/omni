@@ -2,5 +2,12 @@
 # Run omni from this checkout without installing it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+# Gemini appears in the provider chain when GEMINI_API_KEY is set.
+# Put your key in bin/omni.local (untracked) — never hardcode it here.
+# Free key: https://aistudio.google.com/apikey
+if [ -f "${ROOT}/bin/omni.local" ]; then
+  # shellcheck source=/dev/null
+  . "${ROOT}/bin/omni.local"
+fi
 export PYTHONPATH="${ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 exec python3 -m omni "$@"

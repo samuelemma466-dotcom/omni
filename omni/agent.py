@@ -41,6 +41,11 @@ class Agent:
             config.get("agent", {}).get("system_prompt") or DEFAULT_SYSTEM_PROMPT
         )
 
+    def _provider_name(self) -> str:
+        return getattr(self.provider, "last_used", None) or getattr(
+            self.provider, "name", "unknown"
+        )
+
     def _notify(self, request: Any) -> None:
         self.emit({"type": "approval_required", "request": request.public()})
 
@@ -82,7 +87,9 @@ class Agent:
                 content = content or "(the model returned an empty response)"
                 messages.append({"role": "assistant", "content": content})
                 self.emit({"type": "assistant", "content": content})
-                self.emit({"type": "done", "steps": step + 1})
+                self.emit(
+                    {"type": "done", "steps": step + 1, "provider": self._provider_name()}
+                )
                 return content
 
             messages.append(

@@ -63,6 +63,11 @@ key at all. So on a machine with no keys the chain is just
 `ollama -> pollinations`, and Omni still answers when Ollama is down — at the
 cost of sending that prompt to a third party.
 
+A turn also moves down the chain when the local model is **too slow**
+(`providers.ollama.timeout`, default 60 s) or returns a malformed tool call.
+That keeps a cold 2011-era CPU from hanging the overlay for minutes: the slow
+local attempt is abandoned and the free provider answers instead.
+
 ```bash
 export GEMINI_API_KEY=...        # free tier: https://aistudio.google.com/apikey
 # or GROQ_API_KEY / OPENROUTER_API_KEY
@@ -85,7 +90,7 @@ num_ctx = 2048      # KV cache size; 4096 doubles it
 num_predict = 512   # max generated tokens per model call
 num_thread = 4      # 0 = let Ollama decide
 keep_alive = "5m"   # unload the model when idle, giving RAM back
-timeout = 150       # give up and use the next provider
+timeout = 60        # give up and use the next provider
 ```
 
 A model is only loaded with new options after it is reloaded, so restart
@@ -94,6 +99,22 @@ Ollama after changing `num_thread`:
 ```bash
 systemctl --user restart ollama
 ```
+
+### What to expect on old hardware
+
+Measured on a 2011 dual-core i5 with 8 GB of RAM and the desktop running
+(`qwen2.5:1.5b`, 2k context, 4 threads):
+
+| | |
+|---|---|
+| first turn after a reload | ~25–40 s (loads the model, evaluates the prompt) |
+| later turns, same prompt prefix | ~1–3 s — Ollama reuses the cached prompt |
+| long answers | ~1–2 tokens/s, so keep answers short |
+| tool calls on 1.5B | unreliable; 3B is much better but roughly twice as slow |
+
+The cached-prefix behaviour is why the system prompt and tool list are kept
+stable: changing either one throws the cache away and the next turn is slow
+again.
 
 ## Chat
 
@@ -221,6 +242,36 @@ Safety guards, all enforced before any write:
 
 Writes use `dd bs=4M conv=fsync`, then `sync` and `blockdev --rereadpt`. Privileged steps use
 `sudo` in an interactive terminal, otherwise `pkexec`.
+
+## Phones plugin
+
+Detects phones on USB and reads their details — **no developer mode required** for the
+basics, and it works on Android and iPhone alike.
+
+```bash
+./bin/omni call phones.detect     # who is on the bus + MTP/adb/apple details + hints
+./bin/omni call phones.watch --args '{"seconds":120}'   # live plug/unplug window
+./bin/omni call phones.log        # recent events from the persistent log
+```
+
+What each bridge gives you, no phone settings touched:
+
+| Bridge | Needs | Reads |
+|---|---|---|
+| MTP (`mtp-detect`) | nothing | any Android: model, OS version, serial, storage stats |
+| adb (`android-tools`) | USB debugging on the phone | getprop details, then install/screenshot/logcat later |
+| libimobiledevice (`ideviceinfo`) | `usbmuxd` running | iPhone/iPad model, iOS version, serial |
+
+`phones.watch` watches kernel uevents via `udevadm` (no sudo), classifies each plug/unplug
+as phone/hub/unknown, attaches MTP identity when a phone appears, and appends to
+`~/.local/state/omni/phones/events.jsonl` so the overlay can replay history.
+
+When no phone is found, `phones.detect` explains the usual suspects — charge-only cable
+(no data wires), dead port, or charge-only USB mode — because the most common "detector is
+broken" report is really a cable that only carries power.
+
+Bootloader/fastboot flashing and per-vendor unlock recipes are deliberately out of scope
+for now: they require OEM unlocking on the phone and differ per vendor.
 
 ## Server (for the overlay)
 

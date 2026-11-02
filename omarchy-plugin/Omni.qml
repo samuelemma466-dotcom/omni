@@ -128,6 +128,14 @@ Item {
     })
   }
 
+  // Test hook: fill the input and send it, as if typed. Used by the installer's
+  // smoke test and by `omarchy-shell shell call jovibe.omni debugAsk "..."`.
+  function debugAsk(text) {
+    input.text = String(text || "")
+    root.submit()
+    return "ok"
+  }
+
   function statusLabel() {
     if (root.serverOk) return "online"
     if (root.starting) return "starting"
@@ -292,6 +300,12 @@ Item {
     } else if (event.type === "done") {
       root.busy = false
       root.statusText = ""
+      // Show which provider actually answered (local vs a free cloud fallback).
+      if (event.provider && transcript.count > 0) {
+        var last = transcript.count - 1
+        if (transcript.get(last).role === "assistant")
+          transcript.setProperty(last, "meta", String(event.provider))
+      }
       root.expireApprovals()
     }
   }

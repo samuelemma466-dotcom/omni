@@ -18,6 +18,10 @@ LOG="$STATE_DIR/daemon.log"
 PORT="${OMNI_PORT:-8737}"
 OMNI_BIN="${OMNI_BIN:-$HOME/.local/bin/omni}"
 
+# Free Gemini API key (free tier: https://aistudio.google.com/apikey)
+# Required for Gemini to appear in the provider chain.
+export GEMINI_API_KEY="${GEMINI_API_KEY:-AQ.Ab8RN6KPXa2cwtXyvSL8hKqsnRqGt2rK8a9qghnAKWQjWRp_2g}"
+
 mkdir -p "$STATE_DIR"
 chmod 700 "$STATE_DIR" 2>/dev/null || true
 

@@ -114,6 +114,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     for tool in ("lsusb", "lsblk", "udevadm", "udisksctl", "wipefs", "dd", "pkexec", "sudo"):
         print(f"  {tool:<10} {'ok' if shutil.which(tool) else 'missing'}")
     print()
+    print("phone tooling:")
+    for tool in ("mtp-detect", "adb", "ideviceinfo", "usbmuxd"):
+        print(f"  {tool:<10} {'ok' if shutil.which(tool) else 'missing'}")
+    print()
     print(f"audit: {AUDIT_PATH}")
     return 0
 

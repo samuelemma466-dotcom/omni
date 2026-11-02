@@ -20,6 +20,8 @@ class FallbackProvider(Provider):
         if not providers:
             raise ProviderError("no providers in fallback chain")
         self.providers = providers
+        # Name of the provider that answered most recently, for the UI and logs.
+        self.last_used: str | None = None
 
     @property
     def chain(self) -> list[str]:
@@ -29,7 +31,9 @@ class FallbackProvider(Provider):
         errors: list[str] = []
         for provider in self.providers:
             try:
-                return provider.chat(messages, tools)
+                reply = provider.chat(messages, tools)
+                self.last_used = provider.name
+                return reply
             except ProviderError as exc:
                 errors.append(f"{provider.name}: {exc}")
             except OSError as exc:  # network hiccups from urllib

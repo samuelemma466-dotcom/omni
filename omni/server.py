@@ -30,12 +30,16 @@ class Runtime:
         self.broker = Broker(config.get("policy", {}), self.audit)
         self.token = server_token()
         self._provider = None
+        self._provider_at = time.monotonic()
         self._provider_lock = threading.Lock()
 
     def provider(self):
         with self._provider_lock:
-            if self._provider is None:
+            # Rebuild now and then: Ollama may have been down when the daemon
+            # started and come back later, which changes the whole chain.
+            if self._provider is None or (time.monotonic() - self._provider_at) > 60:
                 self._provider = build_provider(self.config)
+                self._provider_at = time.monotonic()
             return self._provider
 
     def agent(self, emit) -> Agent:

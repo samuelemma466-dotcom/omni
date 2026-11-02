@@ -1,0 +1,45 @@
+{
+  "name": "phones",
+  "version": "0.1.0",
+  "description": "Detect phones on USB and read their details — no developer mode required.",
+  "runtime": "python",
+  "entry": "handler.py",
+  "tools": [
+    {
+      "name": "phones.detect",
+      "description": "Detect phones on the USB bus and read details via MTP (any Android, no dev mode), adb (if USB debugging is enabled), or libimobiledevice (iPhone). Includes a hint when nothing is found.",
+      "capabilities": ["read"],
+      "danger": "low",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "probe": {"type": "boolean", "description": "Run MTP/adb probes on detected phones. Default true."}
+        }
+      }
+    },
+    {
+      "name": "phones.watch",
+      "description": "Watch the USB bus for plug/unplug events for a bounded window (5-600s, default 60) and report phones as they appear. Events are appended to a persistent log.",
+      "capabilities": ["read"],
+      "danger": "low",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "seconds": {"type": "integer", "description": "Watch window length in seconds. Default 60."}
+        }
+      }
+    },
+    {
+      "name": "phones.log",
+      "description": "Show the last plug/unplug events recorded by phones.watch.",
+      "capabilities": ["read"],
+      "danger": "low",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "limit": {"type": "integer", "description": "Number of events to show. Default 50."}
+        }
+      }
+    }
+  ]
+}

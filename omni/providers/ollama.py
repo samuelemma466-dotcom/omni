@@ -79,10 +79,19 @@ class OllamaProvider(Provider):
         calls = []
         for index, call in enumerate(message.get("tool_calls") or []):
             function = call.get("function") or {}
+            name = str(function.get("name") or "").strip()
+            if not name:
+                # Small models sometimes emit a call the server cannot name.
+                # Fail the reply so the fallback chain can try another provider
+                # instead of handing the agent an un-callable tool.
+                raise ProviderError(
+                    "the local model returned a tool call with no name "
+                    "(try a larger model, or let the fallback provider answer)"
+                )
             calls.append(
                 ToolCall(
                     id=str(call.get("id") or f"ollama_{index}"),
-                    name=str(function.get("name", "")),
+                    name=name,
                     arguments=_as_arguments(function.get("arguments")),
                 )
             )
